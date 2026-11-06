@@ -1,0 +1,2 @@
+# 理髮師悖論:前提矛盾(省略結論)
+exists b. forall x. (Shaves(b,x) <-> ~Shaves(x,x))

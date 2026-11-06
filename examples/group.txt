@@ -1,0 +1,5 @@
+# 群論:單位元的反元素是單位元
+forall x. mul(e,x) = x
+forall x. mul(inv(x),x) = e
+forall x y z. mul(mul(x,y),z) = mul(x,mul(y,z))
+|- inv(e) = e

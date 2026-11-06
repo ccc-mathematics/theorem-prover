@@ -1,0 +1,12 @@
+{
+  "name": "resolution-theorem-prover",
+  "version": "1.1.0",
+  "description": "一階邏輯歸結法定理證明器(含等式支援),命令列與網頁版",
+  "bin": { "prove": "bin/cli.js" },
+  "scripts": {
+    "demo": "node bin/cli.js --demo",
+    "test": "node test/test.js",
+    "build": "node scripts/build-web.js"
+  },
+  "license": "MIT"
+}

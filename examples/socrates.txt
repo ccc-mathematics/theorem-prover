@@ -1,0 +1,4 @@
+# 蘇格拉底三段論
+forall x. (Man(x) -> Mortal(x))
+Man(socrates)
+|- Mortal(socrates)

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>歸結法定理證明器</title>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f1f4f1;--ink:#1c2b27;--mut:#667570;--pan:#fff;--line:#cfd8d3;--acc:#0f6b5c;--bad:#a4432b;color-scheme:light;
+ box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121917;--ink:#e4ece8;--mut:#8fa19b;--pan:#1b2523;--line:#2e3b37;--acc:#5fc9b3;--bad:#e58a71;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121917;--ink:#e4ece8;--mut:#8fa19b;--pan:#1b2523;--line:#2e3b37;--acc:#5fc9b3;--bad:#e58a71;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:18px/1.7 Newsreader,"Noto Serif TC",Georgia,serif}
+main{max-width:720px;margin:0 auto;padding:28px 18px 64px}
+h1{font-size:2rem;line-height:1.2;margin:0 0 6px;font-weight:600}
+.sub{color:var(--mut);margin:0 0 24px}
+label{display:block;font-weight:600;margin:18px 0 6px}
+textarea,input,select{width:100%;font:15px/1.6 "JetBrains Mono",ui-monospace,Menlo,monospace;color:var(--ink);background:var(--pan);border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+textarea{min-height:130px;resize:vertical}
+select{font-family:inherit;font-size:16px}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.hint{color:var(--mut);font-size:.88rem;margin:6px 0 0}
+button{font:inherit;font-weight:600;color:var(--pan);background:var(--acc);border:1px solid var(--acc);border-radius:6px;padding:10px 26px;cursor:pointer}
+#go{margin-top:18px}
+button.tab{margin:0 8px 14px 0;padding:5px 14px;font-size:.9rem;color:var(--ink);background:transparent;border-color:var(--line)}
+button.tab[aria-pressed="true"]{color:var(--pan);background:var(--acc);border-color:var(--acc)}
+#out{margin-top:30px}
+.st{font-weight:600;margin:0 0 14px}
+.st.proved{color:var(--acc)}.st.saturated,.st.timeout,.st.error{color:var(--bad)}
+code{font:15px/1.6 "JetBrains Mono",ui-monospace,monospace;word-break:break-word}
+ol{list-style:none;margin:0;padding:0;border-left:3px solid var(--acc)}
+ol li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 16px;padding:7px 0 7px 14px;border-bottom:1px solid var(--line)}
+ol li b{color:var(--mut);font-weight:400;min-width:2.2em;font:14px "JetBrains Mono",monospace}
+ol li code{flex:1 1 280px}
+ol li:last-child code{color:var(--acc);font-weight:500}
+ul.tree,ul.tree ul{list-style:none;margin:0;padding:0}
+ul.tree ul{margin-left:6px;padding-left:14px;border-left:2px solid var(--line)}
+ul.tree li{padding:5px 0}
+.row{display:flex;flex-wrap:wrap;gap:0 14px;align-items:baseline}
+.row span,ol li span{color:var(--mut);font-size:.88rem}
+ul.tree>li>.row code{color:var(--acc);font-weight:500}
+.qed{text-align:right;color:var(--acc);font-size:1.4rem;margin:8px 0 0}
+</style>
+</head>
+<body>
+<main>
+<h1>歸結法定理證明器</h1>
+<p class="sub">輸入一階邏輯前提與結論,程式否定結論後用歸結法與等式替換尋找矛盾。</p>
+<label for="ex">範例</label>
+<select id="ex"></select>
+<label for="prem">前提(每行一條)</label>
+<textarea id="prem" spellcheck="false" autocapitalize="off"></textarea>
+<label for="goal">結論(留空則檢查前提是否矛盾)</label>
+<input id="goal" spellcheck="false" autocapitalize="off">
+<p class="hint">符號:~ 否定、&amp; 且、| 或、-&gt; 蘊含、&lt;-&gt; 若且唯若、forall x. 與 exists x.、等號 a = b 與 a != b。被量詞綁定的是變數,其餘名稱是常數或函數。</p>
+<button id="go">開始證明</button>
+<div id="out" aria-live="polite"></div>
+</main>
+<script id="pmain">/*PROVER*/</script>
+<script>
+const $=id=>document.getElementById(id), E=Prover.examples;
+E.forEach((e,i)=>$('ex').add(new Option(e.name,i)));
+function load(i){$('prem').value=E[i].premises.join('\n');$('goal').value=E[i].goal;$('out').textContent=''}
+$('ex').onchange=e=>load(e.target.value);
+function el(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n}
+
+let worker=null;
+const stop=()=>{if(worker){worker.terminate();worker=null}};
+function solve(prem,goal,done){ // 優先在背景執行緒計算;不支援時退回主執行緒
+  const opts={maxMs:15000};
+  const local=()=>{try{done(Prover.prove(prem,goal,opts))}catch(e){done(null,e.message)}};
+  try{
+    const src=$('pmain').textContent+';onmessage=e=>{try{postMessage({r:Prover.prove(e.data.prem,e.data.goal,e.data.opts)})}catch(x){postMessage({e:x.message})}}';
+    worker=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    worker.onmessage=m=>{stop();m.data.e?done(null,m.data.e):done(m.data.r)};
+    worker.onerror=()=>{stop();local()};
+    worker.postMessage({prem,goal,opts});
+  }catch(x){local()}
+}
+
+function tree(steps){
+  const by={},shown=new Set();steps.forEach(s=>by[s.id]=s);
+  const build=id=>{
+    const s=by[id],li=el('li'),row=el('div','row'),note=el('span','',s.rule+' (#'+id+')');
+    row.append(el('code','',s.text),note);li.append(row);
+    if(s.from.length){
+      if(shown.has(id)){note.textContent+=' 同上';return li}
+      shown.add(id);const ul=el('ul');s.from.forEach(f=>ul.append(build(f)));li.append(ul);
+    }
+    return li;
+  };
+  const ul=el('ul','tree');ul.append(build(steps[steps.length-1].id));return ul;
+}
+function show(r){
+  const out=$('out');out.textContent='';
+  out.append(el('p','st '+r.status,Prover.statusText(r)));
+  if(!r.steps.length)return;
+  const bar=el('div'),box=el('div');
+  const draw=m=>{
+    box.textContent='';
+    if(m==='tree')box.append(tree(r.steps));
+    else{const ol=el('ol');r.steps.forEach(s=>{const li=el('li');li.append(el('b','',s.id+'.'),el('code','',s.text),el('span','',s.rule));ol.append(li)});box.append(ol)}
+    bar.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.m===m)));
+  };
+  [['tree','證明樹'],['list','步驟列表']].forEach(([m,t])=>{const b=el('button','tab',t);b.dataset.m=m;b.onclick=()=>draw(m);bar.append(b)});
+  out.append(bar,box,el('p','qed','∎'));draw('tree');
+}
+$('go').onclick=()=>{
+  const out=$('out'),go=$('go');
+  if(worker){stop();go.textContent='開始證明';out.textContent='';out.append(el('p','st timeout','已停止'));return}
+  const prem=$('prem').value.split('\n').map(s=>s.trim()).filter(s=>s&&!s.startsWith('#'));
+  out.textContent='';out.append(el('p','st','計算中…'));go.textContent='停止';
+  solve(prem,$('goal').value.trim()||null,(r,err)=>{
+    go.textContent='開始證明';out.textContent='';
+    err?out.append(el('p','st error',err)):show(r);
+  });
+};
+load(0);
+</script>
+</body>
+</html>
